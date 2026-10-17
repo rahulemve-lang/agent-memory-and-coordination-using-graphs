@@ -121,3 +121,5 @@ design decisions.
   entity's full name; fuzzy matching is future work.
 - **The `forget` cleanup query and some helper queries are written and unit-tested but were not
   part of the demo run** (see status in `QUERIES.md`).
+ ## demo video
+  https://youtu.be/os3Midff7hw
