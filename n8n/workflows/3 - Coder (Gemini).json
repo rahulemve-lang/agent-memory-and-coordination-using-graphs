@@ -1,0 +1,462 @@
+{
+  "name": "3 - Coder (Gemini)",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Coder\nRuns every 20s. Only gets a task once its dependencies (the approved researcher decisions) are done.\n\nThe generated code is in the **Coder Parse** node output (`full`) - open it from the Executions tab. It is not saved to the graph, only the summary is.\n\nSelect credentials: Header Auth on HTTP nodes, Gemini.\n\nAfter a successful build, the summary goes through workflow 4 (memory extraction) so the graph learns entities/facts from it. If that step fails the task still completes.",
+        "height": 300,
+        "width": 460
+      },
+      "id": "9f5065df-d232-44d6-8585-43f76f0dba6b",
+      "name": "Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -224,
+        32
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "seconds",
+              "secondsInterval": 20
+            }
+          ]
+        }
+      },
+      "id": "8e0f2613-de92-4f2b-b857-5984889806aa",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://graphmem:8080/task/claim",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ tenant: 'demo', user: 'priya', agent: 'coder' }) }}",
+        "options": {}
+      },
+      "id": "822ade7e-6e34-4a5f-90af-46d4be290a57",
+      "name": "Claim",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        224,
+        304
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "graphmem-key",
+          "name": "graphmem API key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "408d9a1c-7c72-46a3-99d6-b157853e31a1",
+              "leftValue": "={{ !!$json.task }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "9cd6e2e4-6751-4554-aa25-eee454d0556a",
+      "name": "Has Task?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        448,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://graphmem:8080/recall",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ tenant: 'demo', user: 'priya', question: $json.task.title, hops: 2 }) }}",
+        "options": {}
+      },
+      "id": "983c5462-7f19-4aac-98c0-3cd9e3b6a8fe",
+      "name": "Recall",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        672,
+        304
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "graphmem-key",
+          "name": "graphmem API key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Task: {{ $('Claim').first().json.task.title }}\n\nTask payload:\n{{ JSON.stringify($('Claim').first().json.task.payload) }}\n\nUpstream results (approved decisions you must follow):\n{{ JSON.stringify($('Claim').first().json.task.upstream, null, 2) }}\n\nEvidence from shared memory:\n{{ $('Recall').first().json.context }}\n\nDo the task now.",
+        "messages": {
+          "messageValues": [
+            {
+              "message": "You are the CODER in a multi-agent team. You receive a build task, the approved results of\nthe tasks it depends on (\"upstream\"), and evidence from the team's shared memory. You write\nworking code that does the task while honoring those decisions and constraints.\n\nRules:\n1. UPSTREAM RESULTS ARE BINDING. They were proposed by a researcher and approved by an\n   independent verifier. If upstream says \"Use Postgres in the Mumbai region\", you use\n   exactly that. Do not substitute your own preference.\n2. HONOR THE EVIDENCE. Every fact and procedure in the evidence is a constraint on your\n   work (data residency, naming rules, standards). Never write code that violates one.\n3. NEVER PROCEED ON A CONFLICT. If upstream results contradict the evidence, or the task\n   cannot be done without breaking a constraint, or a required upstream result is missing\n   or says BLOCKED, do not write code. Start your reply with the single line:\n   BLOCKED: <specific reason naming the conflicting fact/result>\n4. Do not invent requirements. If something essential is ambiguous, choose the simplest\n   reasonable option, and list the assumption under \"Assumptions\".\n5. Code quality: complete and runnable, not pseudocode. No placeholder secrets: read\n   credentials from environment variables. Handle obvious errors. Add brief comments only\n   where the logic is not obvious. Prefer standard libraries and minimal dependencies.\n6. Keep scope tight: do what the task asks, nothing more. No unrequested features.\n7. Be honest about testing: you cannot run code here. Never claim it was tested. If you are\n   unsure about an API or library detail, say so under \"Assumptions\".\n\nOutput format (follow exactly):\n\nSUMMARY: <one sentence stating what was built and which upstream decision it follows>\n\nFILE: path/to/file.ext"
+            }
+          ]
+        },
+        "batching": {}
+      },
+      "id": "23d5e010-77d7-4d4f-9c67-6ffa995ee65e",
+      "name": "Coder LLM",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.7,
+      "position": [
+        912,
+        304
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-3.6-flash",
+        "options": {
+          "maxOutputTokens": 8192,
+          "temperature": 0.2
+        }
+      },
+      "id": "1d384b89-3340-4fee-8461-8a09a78705ef",
+      "name": "Gemini Coder",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        928,
+        544
+      ],
+      "credentials": {
+        "googlePalmApi": {
+          "id": "gemini-key",
+          "name": "Gemini API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const out = ($json.text ?? $json.output ?? '').trim();\nconst blocked = out.startsWith('BLOCKED:');\nconst summary = (out.match(/^SUMMARY:\\s*(.+)$/m) || [])[1] || (blocked ? out : 'No summary');\nreturn { json: { blocked, summary, full: out } };"
+      },
+      "id": "13a8807a-3798-40cd-87e5-77b7814b54b0",
+      "name": "Coder Parse",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1232,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "b7747ea9-2ef5-4234-9bfc-b4e373d90b1b",
+              "leftValue": "={{ $json.blocked }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "1958297a-a0be-434e-877d-ca8f62d87aef",
+      "name": "Blocked?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1440,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://graphmem:8080/task/complete",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ tenant: 'demo', user: 'priya', task_id: $('Claim').first().json.task.id, agent: 'coder', result: $json.full }) }}",
+        "options": {}
+      },
+      "id": "dadb8093-5062-4317-96e0-ceca4e3bf9d9",
+      "name": "Complete (blocked)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1680,
+        208
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "graphmem-key",
+          "name": "graphmem API key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://graphmem:8080/task/complete",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ tenant: 'demo', user: 'priya', task_id: $('Claim').first().json.task.id, agent: 'coder', result: $('Coder Parse').first().json.summary }) }}",
+        "options": {}
+      },
+      "id": "d8ca32f1-ab09-45e0-8ac1-d1a11be7d206",
+      "name": "Complete (done)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2144,
+        400
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "graphmem-key",
+          "name": "graphmem API key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a1111111-0000-4000-8000-000000000001",
+              "name": "agent",
+              "value": "coder",
+              "type": "string"
+            },
+            {
+              "id": "a1111111-0000-4000-8000-000000000002",
+              "name": "text",
+              "value": "={{ $json.summary }}",
+              "type": "string"
+            },
+            {
+              "id": "a1111111-0000-4000-8000-000000000003",
+              "name": "importance",
+              "value": 0.6,
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Prep Memory",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1680,
+        400
+      ],
+      "id": "80a33838-9198-4c44-acaa-43b2a1d08955"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "gmemExtract00004",
+          "mode": "id"
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "name": "Extract + Remember",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        1904,
+        400
+      ],
+      "id": "e41f2a04-8380-4221-9983-0494d8a847a1",
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Claim",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claim": {
+      "main": [
+        [
+          {
+            "node": "Has Task?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recall": {
+      "main": [
+        [
+          {
+            "node": "Coder LLM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Coder LLM": {
+      "main": [
+        [
+          {
+            "node": "Coder Parse",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Coder Parse": {
+      "main": [
+        [
+          {
+            "node": "Blocked?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Task?": {
+      "main": [
+        [
+          {
+            "node": "Recall",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Blocked?": {
+      "main": [
+        [
+          {
+            "node": "Complete (blocked)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prep Memory",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini Coder": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Coder LLM",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep Memory": {
+      "main": [
+        [
+          {
+            "node": "Extract + Remember",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract + Remember": {
+      "main": [
+        [
+          {
+            "node": "Complete (done)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "16c3da9a-9608-424d-a2c5-751626f254d1",
+  "meta": {
+    "instanceId": "e5576e9b754334b2f2eeff8947e78e3dcd0503ccdcb56d345006ff51d9813084"
+  },
+  "nodeGroups": [],
+  "id": "gmemCoder0000003",
+  "tags": []
+}

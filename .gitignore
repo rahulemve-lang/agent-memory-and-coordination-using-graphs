@@ -1,0 +1,12 @@
+# secrets - NEVER commit these
+.env
+*.env
+_env
+
+# python / generated
+__pycache__/
+*.pyc
+trace.html
+
+# local data
+*.db

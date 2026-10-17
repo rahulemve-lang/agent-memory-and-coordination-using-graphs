@@ -1,0 +1,323 @@
+{
+  "name": "1 - Planner (Gemini)",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Planner\nRun manually. Edit the `goal` in the **Trigger** node, then click Execute workflow.\n\n1. Select the Header Auth credential on the HTTP nodes\n2. Select your Gemini credential on the Gemini node",
+        "height": 260,
+        "width": 420
+      },
+      "id": "b25a99b4-dc78-4be0-a731-e4b49fafc645",
+      "name": "Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -224,
+        64
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "6d8b53f5-2b3a-4468-ab2b-a6dd8b6bc864",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "04bc3d9b-4acd-4053-962f-709904ea401e",
+              "name": "goal",
+              "value": "Build the Q3 revenue dashboard for Acme.",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "46244b10-f676-4237-8867-b9e7da05eb2f",
+      "name": "Trigger",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        224,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://graphmem:8080/recall",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ tenant: 'demo', user: 'priya', question: $json.goal }) }}",
+        "options": {}
+      },
+      "id": "bef28caf-0a41-4af3-93a5-33257d68303f",
+      "name": "Recall",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        448,
+        304
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "graphmem-key",
+          "name": "graphmem API key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Goal:\n{{ $('Trigger').first().json.goal }}\n\nKnown context from shared memory (may be empty):\n{{ $json.context }}\n\nPlan the tasks now.",
+        "messages": {
+          "messageValues": [
+            {
+              "message": "You are the PLANNER in a multi-agent team. You do not do the work. You break a goal into\ntasks that other agents will claim and execute.\n\nThe team:\n- \"researcher\": gathers evidence from shared memory and proposes ONE decision per task.\n  Every researcher decision is reviewed by an independent verifier before it counts.\n- \"coder\": builds things. A coder task can only start after the tasks it depends on are done,\n  and it receives their results.\n\nRules:\n1. Produce 2 to 5 tasks. Fewer is better. Never pad.\n2. Every task is assigned to exactly one target: \"researcher\" or \"coder\".\n3. Any decision that must be made before building (choice of tool, region, design, vendor,\n   approach) is a researcher task that comes BEFORE the coder task that depends on it.\n4. \"after\" lists the indexes (0-based) of EARLIER tasks that must finish first. A task may\n   only depend on a lower index than its own. Never reference itself or a later task.\n5. Task titles are specific, self-contained instructions (one sentence) that name the\n   entities involved, e.g. \"Choose database and region for the Q3 Dashboard\". Entity names\n   in titles must match names used in the known context, because the researcher finds\n   evidence by matching entity names.\n6. Use ONLY the known context. Do not invent facts, constraints, deadlines or entities.\n   If the context lists a hard constraint, mention it in the relevant task's payload.\n7. If the goal is too vague to plan (you would be guessing what is wanted), return no tasks\n   and ask ONE clarifying question.\n\nOutput: reply with ONLY a JSON object. No markdown fences, no commentary.\n\nSchema:\n{\n  \"tasks\": [\n    {\n      \"title\": \"string\",\n      \"target\": \"researcher\" | \"coder\",\n      \"after\": [0],\n      \"payload\": { \"constraints\": [\"...\"] }\n    }\n  ],\n  \"question\": null\n}\n- \"payload\" is optional. \"after\" may be [] .\n- If you cannot plan: {\"tasks\": [], \"question\": \"your one question\"}\n\nExample\nGoal: Build the Q3 revenue dashboard for Acme.\nKnown context: Acme requires all customer data to stay in India.\nReply:\n{\"tasks\":[\n {\"title\":\"Choose database and hosting region for the Q3 Dashboard\",\"target\":\"researcher\",\"after\":[],\"payload\":{\"constraints\":[\"Acme: customer data must stay in India\"]}},\n {\"title\":\"Build the Q3 Dashboard backend using the approved database decision\",\"target\":\"coder\",\"after\":[0]}\n],\"question\":null}"
+            }
+          ]
+        },
+        "batching": {}
+      },
+      "id": "bbf677b4-6cf2-465f-b79a-0cdd56a47638",
+      "name": "Planner LLM",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.7,
+      "position": [
+        688,
+        304
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-3.6-flash",
+        "options": {
+          "temperature": 0.2
+        }
+      },
+      "id": "b6048b01-5763-4bf3-b0c7-099c75f9ca78",
+      "name": "Gemini Planner",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        704,
+        528
+      ],
+      "credentials": {
+        "googlePalmApi": {
+          "id": "gemini-key",
+          "name": "Gemini API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const raw = $json.text ?? $json.output ?? '';\nconst cleaned = raw.replace(/```json|```/g, '').trim();\nlet plan;\ntry { plan = JSON.parse(cleaned); }\ncatch (e) { throw new Error('Planner returned invalid JSON: ' + raw.slice(0, 200)); }\nif (!Array.isArray(plan.tasks)) throw new Error('No tasks array');\nif (plan.tasks.length === 0) return { json: { needsClarification: true, question: plan.question } };\nplan.tasks.forEach((t, i) => {\n  if (!['researcher', 'coder'].includes(t.target)) throw new Error(`Task ${i}: bad target`);\n  t.after = (t.after || []).filter(a => Number.isInteger(a) && a >= 0 && a < i);\n});\nreturn { json: { tasks: plan.tasks } };"
+      },
+      "id": "f18c31ec-daa6-4dc6-9970-a2df411cd019",
+      "name": "Planner Parse",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1008,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "5269a93c-2e28-4b37-a1b1-02cab0e59486",
+              "leftValue": "={{ !!$json.needsClarification }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "90770223-243a-417c-925a-313451bba58b",
+      "name": "Needs Clarification?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1232,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "dd021ca2-21b3-4808-9a65-51d6df4793ee",
+              "name": "question",
+              "value": "={{ $json.question }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "7445bcba-9f70-4d0d-bb6e-e5cff6bfb5d8",
+      "name": "Ask User",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1472,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://graphmem:8080/task/create_many",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ tenant: 'demo', user: 'priya', from_agent: 'planner', tasks: $json.tasks }) }}",
+        "options": {}
+      },
+      "id": "af00b9ed-cfd6-48c8-89a4-c6b39710d003",
+      "name": "Create Tasks",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1472,
+        400
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "graphmem-key",
+          "name": "graphmem API key"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Trigger",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trigger": {
+      "main": [
+        [
+          {
+            "node": "Recall",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recall": {
+      "main": [
+        [
+          {
+            "node": "Planner LLM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Planner LLM": {
+      "main": [
+        [
+          {
+            "node": "Planner Parse",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Planner Parse": {
+      "main": [
+        [
+          {
+            "node": "Needs Clarification?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Needs Clarification?": {
+      "main": [
+        [
+          {
+            "node": "Ask User",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create Tasks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini Planner": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Planner LLM",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "7243abe2-d176-40b6-833a-e28da3f24b93",
+  "meta": {
+    "instanceId": "e5576e9b754334b2f2eeff8947e78e3dcd0503ccdcb56d345006ff51d9813084"
+  },
+  "nodeGroups": [],
+  "id": "gmemPlanner00001",
+  "tags": []
+}

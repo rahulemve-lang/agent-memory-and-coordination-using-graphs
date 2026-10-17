@@ -1,0 +1,53 @@
+services:
+  falkordb:
+    image: falkordb/falkordb:latest
+    ports:
+      - "6379:6379"   # database
+      - "3000:3000"   # FalkorDB Browser (visualise the graph)
+    volumes:
+      - falkordb_data:/var/lib/falkordb/data
+
+  graphmem:            # HTTP API over the graph; n8n calls http://graphmem:8080
+    build: .
+    environment:
+      FALKORDB_HOST: falkordb
+      GRAPHMEM_API_KEY: ${GRAPHMEM_API_KEY:-change-me}
+    ports:
+      - "8080:8080"
+    depends_on:
+      - falkordb
+
+  n8n-init:            # one-shot: creates credentials + imports ./n8n/workflows, then exits
+    image: docker.n8n.io/n8nio/n8n
+    user: node
+    entrypoint: ["/bin/sh", "/init/init.sh"]
+    restart: "no"
+    environment:
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:-change-me-too}
+      GRAPHMEM_API_KEY: ${GRAPHMEM_API_KEY:-change-me}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      N8N_RESEED: ${N8N_RESEED:-0}
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./n8n/init.sh:/init/init.sh:ro
+      - ./n8n/workflows:/workflows:ro
+
+  n8n:
+    image: docker.n8n.io/n8nio/n8n
+    ports:
+      - "5678:5678"
+    environment:
+      GENERIC_TIMEZONE: Asia/Kolkata
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:-change-me-too}
+    volumes:
+      - n8n_data:/home/node/.n8n
+    depends_on:
+      graphmem:
+        condition: service_started
+      n8n-init:
+        condition: service_completed_successfully
+
+volumes:
+  falkordb_data:
+  n8n_data:
